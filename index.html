@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Coffee Rush</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: #1a1208;
+      font-family: 'Press Start 2P', monospace;
+      color: #f0d9a6;
+      user-select: none;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    #gameContainer {
+      position: relative;
+      border: 16px solid #b78c43;
+      border-radius: 18px;
+      background: #3c2e1a;
+      width: 900px;
+      max-width: 95vw;
+      height: 220px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-sizing: border-box;
+    }
+    canvas {
+      display: block;
+      background: #3c2e1a;
+      image-rendering: pixelated;
+      border-radius: 12px;
+      width: 100%;
+      height: 200px;
+    }
+    #overlay {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 320px;
+      background: rgba(26, 18, 8, 0.9);
+      border: 3px solid #b78c43;
+      border-radius: 12px;
+      box-shadow: 0 0 20px #b78c43;
+      text-align: center;
+      padding: 20px 25px;
+      user-select: none;
+      z-index: 10;
+      font-size: 12px;
+      line-height: 1.3;
+      letter-spacing: 1px;
+    }
+    #overlay.hidden { display: none; }
+    #overlay h1 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+    }
+    #scoreDisplay {
+      position: absolute;
+      top: 10px;
+      right: 180px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #f0d9a6;
+      text-shadow: 0 0 6px #b78c43;
+      z-index: 6;
+      user-select: none;
+    }
+    #timeDisplay {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #f0d9a6;
+      text-shadow: 0 0 6px #b78c43;
+      z-index: 6;
+      user-select: none;
+    }
+    #brand {
+      margin-top: 6px;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #b78c43;
+      user-select: none;
+    }
+    #tierResult {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #ffd979;
+      font-weight: bold;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="game" width="900" height="200"></canvas>
+    <div id="overlay">
+      <h1>COFFEE RUSH</h1>
+      <p>Click or press any key to start</p>
+    </div>
+    <div id="scoreDisplay">Score: 0</div>
+    <div id="timeDisplay">Time: 0.0s</div>
+  </div>
+  <div id="brand">methebl4ze</div>
+  <div id="tierResult"></div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const timeDisplay = document.getElementById('timeDisplay');
+const tierResult = document.getElementById('tierResult');
+
+const player = { x: 100, y: 150, vy: 0, width: 15.6, height: 15 }; // 13 * 1.2 = 15.6
+let gravity = 0.5;
+let jump = -8;
+let score = 0;
+let time = 0;
+let speed = 3;
+let lastSpawn = 0;
+let playing = false;
+let obstacles = [];
+let lastTime = 0;
+
+function drawCup() {
+  ctx.fillStyle = '#d2b48c';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+  ctx.fillStyle = '#8b5e3c';
+  ctx.fillRect(player.x + 2.4, player.y + 2, 8.4, 6); // offsets multiplied by 1.2
+  ctx.fillStyle = '#d2b48c';
+  ctx.fillRect(player.x - 2.4, player.y + 4, 3, 5);
+}
+
+function spawnObstacle() {
+  const fromTop = Math.random() < 0.3;
+
+  let height, width, yPos;
+
+  if (fromTop) {
+    height = 50 + Math.random() * 40;
+    width = 12 + Math.random() * 12;
+    yPos = 0;
+  } else {
+    const probTop = Math.min(0.3 + (time / 60) * 0.4, 0.7);
+    const isTop = Math.random() < probTop;
+    if (isTop) {
+      height = 60 + Math.random() * 40;
+      width = 12 + Math.random() * 12;
+      yPos = canvas.height - 150 + Math.random() * 90;
+    } else {
+      height = 15 + Math.random() * 25;
+      width = 12 + Math.random() * 12;
+      yPos = canvas.height - height;
+    }
+  }
+
+  obstacles.push({ x: canvas.width, y: yPos, width, height });
+}
+
+function drawObstacle(o) {
+  ctx.fillStyle = '#d2b48c';
+  ctx.fillRect(o.x, o.y, o.width, o.height);
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(o.x, o.y, o.width, o.height);
+}
+
+function getCoffeeTier(score) {
+  if (score <= 30) return { name: 'Espresso', color: '#d35400' };
+  if (score <= 75) return { name: 'Latte', color: '#f39c12' };
+  if (score <= 100) return { name: 'Mocha', color: '#9b59b6' };
+  return { name: 'Cappuccino', color: '#1abc9c' };
+}
+
+function showCoffeeTier(score) {
+  const tier = getCoffeeTier(score);
+  tierResult.textContent = `You earned: ${tier.name}!`;
+  tierResult.style.color = tier.color;
+}
+
+function resetGame() {
+  player.y = 150;
+  player.vy = 0;
+  score = 0;
+  time = 0;
+  speed = 3;
+  obstacles = [];
+  lastSpawn = 0;
+  lastTime = 0;
+  overlay.classList.add('hidden');
+  tierResult.textContent = '';
+  playing = true;
+  requestAnimationFrame(loop);
+}
+
+function loop(timestamp) {
+  if (!playing) return;
+  if (!lastTime) lastTime = timestamp;
+  const delta = timestamp - lastTime;
+  lastTime = timestamp;
+  time += delta / 1000;
+  if (time > 10 && speed < 8) speed += 0.002 * delta;
+
+  const spawnInterval = Math.max(150, 700 - (time * 30));
+  if (timestamp - lastSpawn > spawnInterval + Math.random() * 300) {
+    spawnObstacle();
+    lastSpawn = timestamp;
+  }
+
+  player.vy += gravity;
+  player.y += player.vy;
+  if (player.y > canvas.height - player.height) {
+    player.y = canvas.height - player.height;
+    player.vy = 0;
+  }
+  if (player.y < 0) {
+    player.y = 0;
+    player.vy = 0;
+  }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawCup();
+
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+
+    o.x -= speed;
+
+    if (o.y === 0) {
+      o.y += speed;
+    }
+
+    drawObstacle(o);
+
+    if (
+      player.x < o.x + o.width &&
+      player.x + player.width > o.x &&
+      player.y < o.y + o.height &&
+      player.y + player.height > o.y
+    ) {
+      playing = false;
+      overlay.classList.remove('hidden');
+      showCoffeeTier(score);
+      return;
+    }
+
+    if (o.x + o.width < 0 || o.y > canvas.height) {
+      obstacles.splice(i, 1);
+      score++;
+    }
+  }
+
+  scoreDisplay.textContent = `Score: ${score}`;
+  timeDisplay.textContent = `Time: ${time.toFixed(1)}s`;
+  requestAnimationFrame(loop);
+}
+
+function startOrJump() {
+  if (!playing) resetGame();
+  else player.vy = jump;
+}
+
+window.addEventListener('keydown', startOrJump);
+window.addEventListener('mousedown', startOrJump);
+window.addEventListener('touchstart', startOrJump);
+</script>
+</body>
+</html>
